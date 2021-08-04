@@ -55,6 +55,80 @@ struct AssemblyOptions {
 };
 
 
+struct CropUnmappedOptions {
+    CharString mappingFile;
+    CharString matepairFile;
+    CharString referenceFile;
+
+    CharString prefix;
+    CharString sampleID;
+
+    unsigned kmerLength;
+    CharString adapters;
+    int humanSeqs;
+
+    unsigned threads;
+    CharString memory;
+
+    bool use_velvet;
+    bool skip_assembly;
+    float alignment_score_factor;
+
+    CropUnmappedOptions () :
+        matepairFile(""),
+        referenceFile(""),
+        prefix("."),
+        sampleID(""),
+        kmerLength(47),
+        humanSeqs(maxValue<int>()),
+        threads(1),
+        memory("768M"),
+        use_velvet(false),
+        skip_assembly(false),
+        alignment_score_factor(0.67f)
+    {}
+};
+
+
+struct RemappingOptions {
+    CharString sampleID;
+    CharString referenceFile;
+    CharString workingDir;
+    unsigned humanSeqs;
+    unsigned threads;
+    CharString memory;
+    CharString prefix;
+    float as_factor;
+
+    RemappingOptions():
+        sampleID(""),
+        referenceFile(""),
+        workingDir(""),
+        humanSeqs(maxValue<int>()),
+        threads(1),
+        memory("768M"),
+        prefix("."),
+        as_factor(0.67f)
+    {}
+};
+
+struct MergeSetMateOptions {
+    CharString sampleID;
+    CharString mergedBam;
+    unsigned nonContigSeqs;
+    CharString nonRefBam; 
+    CharString remappedBam;
+
+    MergeSetMateOptions():
+        mergedBam(""),
+        nonContigSeqs(maxValue<int>()),
+        nonRefBam(""),
+        remappedBam("")
+    {}
+    
+   
+};
+
 struct MergeOptions {
     /************
     *  Bifrost  *
@@ -232,6 +306,38 @@ struct GenotypingOptions {
 // =========================
 
 bool getOptionValues(AssemblyOptions & options, ArgumentParser const & parser){
+
+    getArgumentValue(options.mappingFile, parser, 0);
+
+    if (isSet(parser, "prefix"))
+       getOptionValue(options.prefix, parser, "prefix");
+    if (isSet(parser, "sample"))
+       getOptionValue(options.sampleID, parser, "sample");
+    if (isSet(parser, "matePair"))
+        getOptionValue(options.matepairFile, parser, "matePair");
+    if (isSet(parser, "adapters"))
+        getOptionValue(options.adapters, parser, "adapters");
+    if (isSet(parser, "reference"))
+        getOptionValue(options.referenceFile, parser, "reference");
+    if (isSet(parser, "filter"))
+        getOptionValue(options.humanSeqs, parser, "filter");
+    if (isSet(parser, "use-velvet"))
+        getOptionValue(options.use_velvet, parser, "use-velvet");
+    if (isSet(parser, "skip-assembly"))
+        getOptionValue(options.skip_assembly, parser, "skip-assembly");
+    if (isSet(parser, "kmerLength"))
+        getOptionValue(options.kmerLength, parser, "kmerLength");
+    if (isSet(parser, "threads"))
+        getOptionValue(options.threads, parser, "threads");
+    if (isSet(parser, "memory"))
+        getOptionValue(options.memory, parser, "memory");
+    if (isSet(parser, "alignment-score-factor"))
+        getOptionValue(options.alignment_score_factor, parser, "alignment-score-factor");
+
+    return true;
+}
+
+bool getOptionValues(CropUnmappedOptions & options, ArgumentParser const & parser){
 
     getArgumentValue(options.mappingFile, parser, 0);
 
@@ -504,6 +610,12 @@ void setHiddenOptions(ArgumentParser & parser, bool hide, AssemblyOptions &){
     hideOption(parser, "alignment-score-factor", hide);
 }
 
+void setHiddenOptions(ArgumentParser & parser, bool hide, CropUnmappedOptions &){
+    hideOption(parser, "matePair", hide);
+    hideOption(parser, "kmerLength", hide);
+    hideOption(parser, "alignment-score-factor", hide);
+}
+
 
 void setHiddenOptions(seqan::ArgumentParser &parser, bool hide, MergeOptions &){
     hideOption(parser, "minimizer-length",   hide);
@@ -612,6 +724,59 @@ void setupParser(ArgumentParser & parser, AssemblyOptions & options){
     // Hide some options from default help.
     setHiddenOptions(parser, true, options);
 }
+
+void setupParser(ArgumentParser & parser, CropUnmappedOptions & options){
+    setShortDescription(parser, "Assembly of unmapped reads.");
+    setVersion(parser, VERSION);
+    setDate(parser, DATE);
+
+    // Define usage line and long description.
+    addUsageLine(parser, "[\\fIOPTIONS\\fP] \\fIBAM_FILE\\fP");
+    addDescription(parser, "Finds reads without high-quality alignment in the \\fIBAM FILE\\fP, quality filters them "
+          "using SICKLE and assembles them into contigs using MINIA (default) or VELVET. If the option "
+          "\'--reference \\fIFASTA FILE\\fP\' is set, the reads are first remapped to this reference using BWA-MEM and "
+          "only reads that remain without high-quality alignment after remapping are quality-filtered and assembled.");
+
+    // Require a bam file as argument.
+    addArgument(parser, ArgParseArgument(ArgParseArgument::INPUT_FILE, "BAM_FILE"));
+
+    // Setup the options.
+    addSection(parser, "Input/output options");
+    addOption(parser, ArgParseOption("p", "prefix", "Path to the sample directories.", ArgParseArgument::STRING, "PATH"));
+    addOption(parser, ArgParseOption("s", "sample", "An ID for the sample.", ArgParseArgument::STRING, "SAMPLE_ID"));
+    addOption(parser, ArgParseOption("mp", "matePair", "(Currently only available for Velvet.)", ArgParseArgument::INPUT_FILE, "BAM FILE"));
+
+    addSection(parser, "Algorithm options");
+    addOption(parser, ArgParseOption("a", "adapters", "Enable adapter removal for Illumina reads. Default: \\fIno adapter removal\\fP.", ArgParseArgument::STRING, "STR"));
+    addOption(parser, ArgParseOption("r", "reference", "Remap reads to this reference before assembly. Default: \\fIno remapping\\fP.", ArgParseArgument::INPUT_FILE, "FASTA_FILE"));
+    addOption(parser, ArgParseOption("f", "filter", "Treat reads aligned to all but the first INT reference sequences after remapping as high-quality aligned even if their alignment quality is low. "
+          "Recommended for non-human reference sequences.", ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("vel", "use-velvet", "Use the velvet assembler. Default: Minia."));
+    addOption(parser, ArgParseOption("n", "skip-assembly", "Skip assembly per sample."));
+    addOption(parser, ArgParseOption("k", "kmerLength", "The k-mer size if the velvet assembler is used.", ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("c", "alignment-score-factor", "A record is considered low quality if the alignment score (AS) is below FLOAT*read length", seqan::ArgParseArgument::DOUBLE, "FLOAT"));
+    addSection(parser, "Compute resource options");
+    addOption(parser, ArgParseOption("t", "threads", "Number of threads to use for BWA and samtools sort.", ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("m", "memory", "Maximum memory per thread for samtools sort; suffix K/M/G recognized.", ArgParseArgument::STRING, "STR"));
+
+    // Set valid and default values.
+    setValidValues(parser, "adapters", "HiSeq HiSeqX");
+    setValidValues(parser, "reference", "fa fna fasta gz");
+    setDefaultValue(parser, "prefix", "\'.\'");
+    setDefaultValue(parser, "sample", "retrieval from BAM file header");
+    setDefaultValue(parser, "kmerLength", options.kmerLength);
+    setDefaultValue(parser, "threads", options.threads);
+    setDefaultValue(parser, "memory", options.memory);
+    setDefaultValue(parser, "alignment-score-factor", options.alignment_score_factor);
+
+    setMinValue(parser, "threads", "1");
+    setMinValue(parser, "alignment-score-factor", "0.0");
+    setMaxValue(parser, "alignment-score-factor", "1.0");
+
+    // Hide some options from default help.
+    setHiddenOptions(parser, true, options);
+}
+
 
 
 /**
@@ -995,6 +1160,39 @@ ArgumentParser::ParseResult checkInput(AssemblyOptions & options){
     return res;
 }
 
+ArgumentParser::ParseResult checkInput(CropUnmappedOptions & options){
+
+    ArgumentParser::ParseResult res = ArgumentParser::PARSE_OK;
+
+    if (options.prefix != "." && !exists(options.prefix))
+    {
+        std::cerr << "ERROR: Path to sample directories \'" << options.prefix << "\' does not exist." << std::endl;
+        res = ArgumentParser::PARSE_ERROR;
+    }
+
+    if (!exists(options.mappingFile))
+    {
+        std::cerr << "ERROR: Input BAM file \'" << options.mappingFile << "\' does not exist." << std::endl;
+        res = ArgumentParser::PARSE_ERROR;
+    }
+
+    CharString baiFile = options.mappingFile;
+    baiFile += ".bai";
+    if (!exists(baiFile))
+    {
+        std::cerr << "ERROR: BAM index file \'" << baiFile << "\' does not exist." << std::endl;
+        res = ArgumentParser::PARSE_ERROR;
+    }
+
+    if (options.matepairFile != "" && !exists(options.matepairFile))
+    {
+        std::cerr << "ERROR: Input BAM file \'" << options.matepairFile << "\' does not exist." << std::endl;
+        res = ArgumentParser::PARSE_ERROR;
+    }
+
+    return res;
+}
+
 
 ArgumentParser::ParseResult checkInput(MergeOptions & options){
 
@@ -1203,7 +1401,9 @@ void printHelp(char const * name){
     std::cerr << "    \033[1m" << name << " COMMAND\033[0m [\033[4mOPTIONS\033[0m]" << std::endl;
     std::cerr << std::endl;
     std::cerr << "\033[1mCOMMAND\033[0m" << std::endl;
-    std::cerr << "    \033[1massemble\033[0m            Filter, clip and assemble unmapped reads from a sample." << std::endl;
+    std::cerr << "    \033[1mcrop-unmapped\033[0m       Clip unmapped and poorly aligned reads from a sample." << std::endl;
+    std::cerr << "    \033[1mmerge-and-mate\033[0m      Merge and mate poorly aligned reads into contigs." << std::endl;
+    std::cerr << "    \033[1mremapping\033[0m           Remap sample to reference (optional)." << std::endl;
     std::cerr << "    \033[1mmerge\033[0m               Generate supercontigs from a colored compacted de Bruijn Graph." << std::endl;
     std::cerr << "    \033[1mmultik\033[0m              Multi-k framework for a colored compacted de Bruijn Graph." << std::endl;
     std::cerr << "    \033[1mcontigmap\033[0m           Map unmapped reads to (super-)contigs." << std::endl;

@@ -2,12 +2,15 @@
 #include <ctime>
 
 #include "argument_parsing.h"           /* seqAn argument parser */
-#include "popins2_assemble.h"
+#include "popins2_crop_unmapped.h"
+#include "popins2_remapping.h"
+#include "popins2_merge_and_set_mate.h"
 #include "popins2_merge.h"
 #include "popins2_multik.h"
 #include "popins_contigmap.h"
 #include "popins_place.h"
 #include "popins_genotype.h"
+
 
 using namespace std;
 
@@ -29,7 +32,7 @@ int main(int argc, char const *argv[]){
     }
 
     const char * command = argv[1];
-    if (strcmp(command,"assemble") == 0) ret = popins2_assemble(argc, argv);
+    if (strcmp(command,"crop-unmapped") == 0) ret = popins2_crop_unmapped(argc, argv);
     else if (strcmp(command,"merge") == 0) ret = popins2_merge(argc, argv);
     else if (strcmp(command,"multik") == 0) ret = popins2_multik(argc, argv);
     else if (strcmp(command,"contigmap") == 0) ret = popins_contigmap(argc, argv);

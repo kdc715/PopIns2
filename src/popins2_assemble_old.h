@@ -517,7 +517,7 @@ int popins2_assemble(int argc, char const ** argv)
     std::ostringstream msg;
 
     // Parse the command line to get option values.
-    Options options;
+    AssemblyOptions options;
     ArgumentParser::ParseResult res = parseCommandLine(options, argc, argv);
     if (res != ArgumentParser::PARSE_OK)
         return res;
@@ -547,21 +547,6 @@ int popins2_assemble(int argc, char const ** argv)
     CharString fastqSecond = getFileName(workingDirectory, "paired.2.fastq");
     CharString fastqSingle = getFileName(workingDirectory, "single.fastq");
     Triple<CharString> fastqFiles = Triple<CharString>(fastqFirst, fastqSecond, fastqSingle);
-
-    CharString firstFiltered = getFileName(workingDirectory, "filtered.paired.1.fastq");
-    CharString secondFiltered = getFileName(workingDirectory, "filtered.paired.2.fastq");
-    CharString singleFiltered = getFileName(workingDirectory, "filtered.single.fastq");
-    Triple<CharString> filteredFiles(firstFiltered, secondFiltered, singleFiltered);
-
-    // MP handling
-    CharString matesMPBam = getFileName(workingDirectory, "MP.mates.bam");
-    CharString nonRefBamMPTemp = getFileName(workingDirectory, "MP.non_ref_tmp.bam");
-    CharString nonRefMPBam = getFileName(workingDirectory, "MP.non_ref.bam");
-
-    CharString fastqMPFirst = getFileName(workingDirectory, "MP.paired.1.fastq");
-    CharString fastqMPSecond = getFileName(workingDirectory, "MP.paired.2.fastq");
-    CharString fastqMPSingle = getFileName(workingDirectory, "MP.single.fastq");
-    Triple<CharString> fastqMPFiles = Triple<CharString>(fastqMPFirst, fastqMPSecond, fastqMPSingle);
 
     // check if files already exits
     std::fstream stream(toCString(fastqFirst));
@@ -595,8 +580,141 @@ int popins2_assemble(int argc, char const ** argv)
         msg << "Sample info written to \'" << sampleInfoFile << "\'.";
         printStatus(msg);
 
-      
+        msg.str("");
+        msg << "Sorting " << matesBam << " using " << SAMTOOLS;
+        printStatus(msg);
+
+        // Sort <WD>/mates.bam by read name.
+        std::stringstream cmd;
+        if (options.referenceFile != "")
+            cmd << SAMTOOLS << " sort -n -@ " << options.threads << " -m " << options.memory << " -o " << nonRefBamTemp << " " << matesBam;
+        else
+            cmd << SAMTOOLS << " sort -n -@ " << options.threads << " -m " << options.memory << " -o " << nonRefBam << " " << matesBam;
+        if (system(cmd.str().c_str()) != 0)
+        {
+            std::cerr << "ERROR while sorting " << matesBam << std::endl;
+            return 7;
+        }
+
+        remove(toCString(matesBam));
+
+        // Remapping of unmapped with bwa if a fasta reference is given.
+        if (options.referenceFile != "")
+        {
+            Triple<CharString> fastqFilesTemp = fastqFiles;
+            fastqFiles = Triple<CharString>(fastqFirst, fastqSecond, fastqSingle);
+
+            // Align with bwa, update fastq files of unaligned reads, and sort remaining bam records by read name.
+            CharString remappedBam = getFileName(workingDirectory, "remapped.bam");
+            CharString prefix = "";
+            if (remapping(fastqFilesTemp, fastqFiles, options.referenceFile, workingDirectory,
+                    options.humanSeqs, options.threads, options.memory, prefix, as_factor) != 0)
+                return 7;
+
+            // Set the mate's location and merge non_ref.bam and remapped.bam into a single file.
+            unsigned nonContigSeqs;
+            if (merge_and_set_mate(nonRefBam, nonContigSeqs, nonRefBamTemp, remappedBam) != 0)
+                return 7;
+            remove(toCString(remappedBam));
+            remove(toCString(nonRefBamTemp));
+        }
     }
+    else
+    {
+        printStatus("Found files, skipping cropping step.");
+    }
+
+    CharString firstFiltered = getFileName(workingDirectory, "filtered.paired.1.fastq");
+    CharString secondFiltered = getFileName(workingDirectory, "filtered.paired.2.fastq");
+    CharString singleFiltered = getFileName(workingDirectory, "filtered.single.fastq");
+    Triple<CharString> filteredFiles(firstFiltered, secondFiltered, singleFiltered);
+
+    // Quality filtering/trimming with sickle.
+    if (sickle_filtering(filteredFiles, fastqFiles, workingDirectory) != 0)
+        return 7;
+
+    // MP handling
+    CharString matesMPBam = getFileName(workingDirectory, "MP.mates.bam");
+    CharString nonRefBamMPTemp = getFileName(workingDirectory, "MP.non_ref_tmp.bam");
+    CharString nonRefMPBam = getFileName(workingDirectory, "MP.non_ref.bam");
+
+    CharString fastqMPFirst = getFileName(workingDirectory, "MP.paired.1.fastq");
+    CharString fastqMPSecond = getFileName(workingDirectory, "MP.paired.2.fastq");
+    CharString fastqMPSingle = getFileName(workingDirectory, "MP.single.fastq");
+    Triple<CharString> fastqMPFiles = Triple<CharString>(fastqMPFirst, fastqMPSecond, fastqMPSingle);
+
+    if (options.matepairFile != "")
+    {
+        // check if MP files already exits
+        std::fstream MPstream(toCString(fastqMPFirst));
+        if (!MPstream.is_open())
+        {
+            msg.str("");
+            msg << "Cropping unmapped matepair reads from " << options.matepairFile;
+            printStatus(msg);
+
+            // Crop unmapped reads and reads with unreliable mappings from the input bam file.
+            if (options.adapters == "HiSeqX")
+            {
+                if (crop_unmapped(fastqMPFiles, matesMPBam, options.matepairFile, options.humanSeqs, HiSeqXAdapters(), as_factor) != 0)
+                    return 7;
+            }
+            else if (options.adapters == "HiSeq")
+            {
+                if (crop_unmapped(fastqMPFiles, matesMPBam, options.matepairFile, options.humanSeqs, HiSeqAdapters(), as_factor) != 0)
+                    return 7;
+            }
+            else
+            {
+                if (crop_unmapped(fastqMPFiles, matesMPBam, options.matepairFile, options.humanSeqs, NoAdapters(), as_factor) != 0)
+                    return 7;
+            }
+
+            msg.str("");
+            msg << "Sorting " << matesMPBam << " using " << SAMTOOLS;
+            printStatus(msg);
+
+            // Sort <WD>/mates.bam by read name.
+            std::stringstream cmd;
+            if (options.referenceFile != "")
+                cmd << SAMTOOLS << " sort -n -@ " << options.threads << " -m " << options.memory << " -o " << nonRefBamMPTemp << " " << matesMPBam;
+            else
+                cmd << SAMTOOLS << " sort -n -@ " << options.threads << " -m " << options.memory << " -o " << nonRefMPBam << " " << matesMPBam;
+            if (system(cmd.str().c_str()) != 0)
+            {
+                std::cerr << "ERROR while sorting " << matesMPBam << std::endl;
+                return 7;
+            }
+
+            remove(toCString(matesMPBam));
+
+            // Remapping of unmapped with bwa if a fasta reference is given.
+            if (options.referenceFile != "")
+            {
+                Triple<CharString> fastqMPFilesTemp = fastqMPFiles;
+                fastqMPFiles = Triple<CharString>(fastqMPFirst, fastqMPSecond, fastqMPSingle);
+
+                // Align with bwa, update fastq files of unaligned reads, and sort remaining bam records by read name.
+                CharString remappedMPBam = getFileName(workingDirectory, "MP.remapped.bam");
+                CharString prefix = "MP.";
+                if (remapping(fastqMPFilesTemp, fastqMPFiles, options.referenceFile, workingDirectory,
+                        options.humanSeqs, options.threads, options.memory, prefix, as_factor) != 0)
+                    return 7;
+
+                // Set the mate's location and merge non_ref.bam and remapped.bam into a single file
+                unsigned nonContigSeqs;
+                if (merge_and_set_mate(nonRefMPBam, nonContigSeqs, nonRefBamMPTemp, remappedMPBam) != 0)
+                    return 7;
+                remove(toCString(remappedMPBam));
+                remove(toCString(nonRefBamMPTemp));
+            }
+        }
+        else
+        {
+            printStatus("Found matepair files, skipping cropping step");
+        }
+    }
+
 
     CharString firstMPFiltered = getFileName(workingDirectory, "MP.filtered.paired.1.fastq");
     CharString secondMPFiltered = getFileName(workingDirectory, "MP.filtered.paired.2.fastq");
@@ -609,9 +727,6 @@ int popins2_assemble(int argc, char const ** argv)
             return 7;
     }
 
-   
- 
-    
     if (!options.skip_assembly){    // if you use the multik module or an independent assembler you might want to skip the assembly here
 
         CharString assemblyDirectory = getFileName(workingDirectory, "assembly");
@@ -666,22 +781,12 @@ int popins2_assemble(int argc, char const ** argv)
             system(cmd.str().c_str());
         }
     }
-    
 
     remove(toCString(firstFiltered));
     remove(toCString(secondFiltered));
     remove(toCString(singleFiltered));
 
     return res;
-
 }
 
 #endif // #ifndef POPINS_ASSEMBLE_H_
-
-
-/*
-#try deleting part of the functions
-#rename functions
-#sickle (try to get rid)
-#conda package (help with the installation)
-*/
