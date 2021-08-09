@@ -9,7 +9,7 @@
 
 #include "util.h"
 #include "argument_parsing.h"
-#include "crop_unmapped.h"
+#include "popins2_merge_and_set_mate.h"
 #include "location.h"
 
 using namespace seqan;

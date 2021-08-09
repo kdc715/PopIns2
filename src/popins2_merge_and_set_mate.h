@@ -141,25 +141,19 @@ compare_qName(CharString & nameA, CharString & nameB)
 }
 
 // ==========================================================================
-// Function popins2_merge_and_set_mate()
+// Function merge_and_set_mate()
 // ==========================================================================
 
 bool
-merge_and_set_mate(int argc, char const ** argv)
+merge_and_set_mate(CharString &mergedBam, unsigned &nonContigSeqs, CharString &nonRefBam, CharString &remappedBam)
 {
     std::ostringstream msg;
-    // Parse the command line to get option values.
-    MergeSetMateOptions options;
-    ArgumentParser::ParseResult res = parseCommandLine(options, argc, argv);
-    if (res != ArgumentParser::PARSE_OK)
-        return res;
-
-    msg << "Merging bam files " << options.nonRefBam << " and " << options.remappedBam;
+    msg << "Merging bam files " << nonRefBam << " and " << remappedBam;
     printStatus(msg);
 
     // Open the two input streams (can read SAM and BAM files).
-    BamFileIn nonRefStream(toCString(options.nonRefBam));
-    BamFileIn remappedStream(toCString(options.remappedBam));
+    BamFileIn nonRefStream(toCString(nonRefBam));
+    BamFileIn remappedStream(toCString(remappedBam));
 
     printStatus(" - merging headers...");
 
@@ -172,10 +166,10 @@ merge_and_set_mate(int argc, char const ** argv)
 
     // Open the output stream and write the header.
     FormattedFileContext<BamFileOut, Dependent<> >::Type bamContextDep(bamContext);
-    BamFileOut outStream(bamContextDep, toCString(options.mergedBam));
+    BamFileOut outStream(bamContextDep, toCString(mergedBam));
     writeHeader(outStream, outHeader);
 
-    options.nonContigSeqs = length(contigNames(context(nonRefStream)));
+    nonContigSeqs = length(contigNames(context(nonRefStream)));
 
     printStatus(" - merging read records...");
 
@@ -223,7 +217,29 @@ merge_and_set_mate(int argc, char const ** argv)
     return 0;
 }
 
+// ==========================================================================
+// Function popins2_merge_and_set_mate()
+// ==========================================================================
 
+bool
+popins2_merge_and_set_mate(int argc, char const ** argv)
+{
+    // Parse the command line to get option values.
+    MergeSetMateOptions options;
+    ArgumentParser::ParseResult res = parseCommandLine(options, argc, argv);
+    if (res != ArgumentParser::PARSE_OK)
+        return res;
+
+    CharString workingDirectory = getFileName(options.prefix, options.sampleID);
+    
+    CharString mergedBam = getFileName(workingDirectory, "merged.bam");
+    unsigned nonContigSeqs = 0;
+    CharString nonRefBam = getFileName(workingDirectory, "non_ref.bam");
+    CharString remappedBam = getFileName(workingDirectory, "remapped.bam");
+
+    bool ret = merge_and_set_mate(mergedBam, nonContigSeqs, nonRefBam, remappedBam);
+    return ret;
+}
 
 
 #endif // #ifndef POPINS2_MERGE_SETMATE_H_

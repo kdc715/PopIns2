@@ -19,8 +19,7 @@ using namespace seqan;
 // could be taken apart in snakemake, only calling external functions(SAMTOOLS/BWA)
 // ==========================================================================
 
-inline int popins2_remapping(Triple<CharString> & fastqFilesTemp,
-        Triple<CharString> & fastqFiles, int argc, char const ** argv)
+inline int popins2_remapping(int argc, char const ** argv)
 {
     std::stringstream cmd;
     std::ostringstream msg;
@@ -38,7 +37,15 @@ inline int popins2_remapping(Triple<CharString> & fastqFilesTemp,
         msg.str("");
         msg << "Working directory created at " << workingDirectory;
         printStatus(msg);
-    }   
+    }
+
+    CharString fastqFirst = getFileName(workingDirectory, "paired.1.fastq");
+    CharString fastqSecond = getFileName(workingDirectory, "paired.2.fastq");
+    CharString fastqSingle = getFileName(workingDirectory, "single.fastq");
+    Triple<CharString> fastqFiles = Triple<CharString>(fastqFirst, fastqSecond, fastqSingle);
+    
+    Triple<CharString> fastqFilesTemp = fastqFiles;
+       
 
     CharString f1 = options.prefix;
     f1 += "remapped.sam";
@@ -130,7 +137,7 @@ inline int popins2_remapping(Triple<CharString> & fastqFilesTemp,
     printStatus(msg);
 
     // Crop unmapped and create bam file of remapping.
-    if (crop_unmapped(fastqFiles, remappedUnsortedBam, remappedBam, options.humanSeqs, NoAdapters(), options.as_factor) != 0)
+    if (crop_unmapped(fastqFiles, remappedUnsortedBam, remappedBam, options.humanSeqs, NoAdapters(), options.alignment_score_factor) != 0)
         return 1;
     remove(toCString(remappedBai));
 

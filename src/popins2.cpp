@@ -33,6 +33,8 @@ int main(int argc, char const *argv[]){
 
     const char * command = argv[1];
     if (strcmp(command,"crop-unmapped") == 0) ret = popins2_crop_unmapped(argc, argv);
+    else if (strcmp(command,"remapping") == 0) ret = popins2_remapping(argc, argv);
+    else if (strcmp(command,"merge-set-mate") == 0) ret = popins2_merge_and_set_mate(argc, argv);
     else if (strcmp(command,"merge") == 0) ret = popins2_merge(argc, argv);
     else if (strcmp(command,"multik") == 0) ret = popins2_multik(argc, argv);
     else if (strcmp(command,"contigmap") == 0) ret = popins_contigmap(argc, argv);
