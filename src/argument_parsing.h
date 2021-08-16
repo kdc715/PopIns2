@@ -385,10 +385,11 @@ bool getOptionValues(RemappingOptions & options, ArgumentParser const & parser){
 
 bool getOptionValues(MergeSetMateOptions & options, ArgumentParser const & parser){
 
+    getArgumentValue(options.sampleID, parser, 0);
+
     if (isSet(parser, "prefix"))
        getOptionValue(options.prefix, parser, "prefix");
-    if (isSet(parser, "sample"))
-       getOptionValue(options.sampleID, parser, "sample");
+
 
     return true;
 }
@@ -867,26 +868,21 @@ void setupParser(ArgumentParser & parser, MergeSetMateOptions & options){
     setDate(parser, DATE);
 
     // Define usage line and long description.
-    addUsageLine(parser, "[\\fIOPTIONS\\fP] \\fIBAM_FILE\\fP");
+    addUsageLine(parser, "[\\fIOPTIONS\\fP] \\fISAMPLE_ID\\fP");
     addDescription(parser, "Finds reads without high-quality alignment in the \\fIBAM FILE\\fP, quality filters them "
           "using SICKLE and assembles them into contigs using MINIA (default) or VELVET. If the option "
           "\'--reference \\fIFASTA FILE\\fP\' is set, the reads are first remapped to this reference using BWA-MEM and "
           "only reads that remain without high-quality alignment after remapping are quality-filtered and assembled.");
 
     // Require a bam file as argument.
-    addArgument(parser, ArgParseArgument(ArgParseArgument::INPUT_FILE, "BAM_FILE"));
+    addArgument(parser, ArgParseArgument(ArgParseArgument::STRING, "SAMPLE_ID"));
 
     // Setup the options.
     addSection(parser, "Input/output options");
     addOption(parser, ArgParseOption("p", "prefix", "Path to the sample directories.", ArgParseArgument::STRING, "PATH"));
-    addOption(parser, ArgParseOption("s", "sample", "An ID for the sample.", ArgParseArgument::STRING, "SAMPLE_ID"));
     
     // Set valid and default values.
-    setValidValues(parser, "adapters", "HiSeq HiSeqX");
-    setValidValues(parser, "reference", "fa fna fasta gz");
     setDefaultValue(parser, "prefix", "\'.\'");
-    setDefaultValue(parser, "sample", "retrieval from BAM file header");
-
     
 
     // Setup hidden options
@@ -1548,7 +1544,7 @@ void printHelp(char const * name){
     std::cerr << std::endl;
     std::cerr << "\033[1mCOMMAND\033[0m" << std::endl;
     std::cerr << "    \033[1mcrop-unmapped\033[0m       Clip unmapped and poorly aligned reads from a sample." << std::endl;
-    std::cerr << "    \033[1mmerge-and-mate\033[0m      Merge and mate poorly aligned reads into contigs." << std::endl;
+    std::cerr << "    \033[1mmerge-set-mate\033[0m      Merge and mate poorly aligned reads into contigs." << std::endl;
     std::cerr << "    \033[1mremapping\033[0m           Remap sample to reference (optional)." << std::endl;
     std::cerr << "    \033[1mmerge\033[0m               Generate supercontigs from a colored compacted de Bruijn Graph." << std::endl;
     std::cerr << "    \033[1mmultik\033[0m              Multi-k framework for a colored compacted de Bruijn Graph." << std::endl;
